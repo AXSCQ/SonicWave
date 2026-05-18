@@ -15,13 +15,18 @@
         "dev": "esbuild src/sonicwave.js --bundle --format=esm --outfile=dist/sonicwave.js --watch"
     },
     "keywords": [
-        "waveform",
-        "audio",
-        "visualization",
-        "equalizer",
-        "spectrum",
-        "canvas",
-        "sonicmotion"
+        "audio waveform visualizer",
+        "music visualization canvas JS",
+        "equalizer bars javascript",
+        "frequency spectrum display",
+        "visualizador de audio web",
+        "WaveSurfer alternative",
+        "canvas audio visualization",
+        "sonicmotion plugin",
+        "Web Audio API visualizer",
+        "music spectrum analyzer JS",
+        "canvas equalizer library",
+        "sonicwave"
     ],
     "author": "axscq",
     "license": "MIT",
