@@ -84,16 +84,22 @@ sonic.onFrame((data) => {
 
 ```javascript
 const waveform = SonicWave.createWaveform({
-    canvas: document.getElementById('waveform-canvas'),
-    color: '#00d4ff',
-    backgroundColor: '#111'
+    container: document.getElementById('waveform'), // the canvas is created inside
+    waveColor: '#4fa4e0',
+    progressColor: '#0ec3f0',
+    height: 48
 });
 
-// Render from AudioBuffer
-const response = await fetch('/audio/master.mp3');
-const arrayBuffer = await response.arrayBuffer();
-const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-waveform.renderBuffer(audioBuffer);
+// Option A: fetch + decode the audio and extract peaks
+await waveform.load('/audio/master.mp3');
+
+// Option B: precomputed amplitudes (e.g. an offline energy envelope),
+// no second download/decode of the audio
+waveform.setPeaks(envelope, durationSeconds);
+
+// Follow playback and let the user jump around
+waveform.setTime(audio.currentTime);
+waveform.enableSeek((progress) => { audio.currentTime = progress * audio.duration; });
 ```
 
 ---
@@ -150,9 +156,11 @@ spectrum.destroy()
 
 // Waveform
 const waveform = SonicWave.createWaveform(config);
-waveform.renderBuffer(audioBuffer)   // Render from AudioBuffer
-waveform.renderLive(frequencyData)   // Render from real-time byte array
-waveform.clear()
+await waveform.load(urlOrArrayBuffer)  // Fetch/decode audio and extract peaks
+waveform.setPeaks(values, duration)    // Use precomputed amplitudes instead
+waveform.setProgress(0.5)              // 0–1
+waveform.setTime(seconds)              // needs a known duration
+waveform.enableSeek(progress => {})    // click-to-seek
 waveform.destroy()
 ```
 

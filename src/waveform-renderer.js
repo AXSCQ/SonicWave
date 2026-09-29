@@ -38,6 +38,7 @@ export class WaveformRenderer {
         this._responsive = config.responsive ?? true;
 
         this._peaks = null;
+        this._rawValues = null;  // values given to setPeaks(), re-bucketed on resize
         this._progress = 0;  // 0 to 1
         this._duration = 0;
         this._isReady = false;
@@ -60,6 +61,10 @@ export class WaveformRenderer {
                 if (dim) {
                     this._width = dim.width;
                     this._height = dim.height;
+                    // peaks given with setPeaks() are re-bucketed for the new
+                    // width (created inside a hidden container, width was 0
+                    // and they collapsed into a single bar)
+                    if (this._rawValues) this._resamplePeaks();
                     this._draw();
                 }
             });
@@ -86,6 +91,7 @@ export class WaveformRenderer {
 
         this._duration = audioBuffer.duration;
         this._peaks = this._extractPeaks(audioBuffer);
+        this._rawValues = null;   // peaks from audio, not from setPeaks()
         this._isReady = true;
 
         await audioCtx.close();
@@ -124,6 +130,43 @@ export class WaveformRenderer {
         }
 
         return peaks;
+    }
+
+    /**
+     * Use precomputed amplitude values instead of decoding audio (e.g. an
+     * energy envelope from an offline analysis). Values are resampled to the
+     * number of bars that fit the canvas (max per bucket).
+     * @param {ArrayLike<number>} values - Amplitudes (any scale; normalized if `normalize`)
+     * @param {number} [duration=0] - Duration in seconds, enables setTime()
+     */
+    setPeaks(values, duration = 0) {
+        this._rawValues = values;
+        this._duration = duration;
+        this._resamplePeaks();
+        this._isReady = true;
+        this._draw();
+        return this;
+    }
+
+    /** Buckets the values given to setPeaks() into the bars that fit now. */
+    _resamplePeaks() {
+        const values = this._rawValues;
+        const step = this._barWidth + this._barGap;
+        const totalBars = Math.max(1, Math.floor(this._width / step));
+        const peaks = new Float32Array(totalBars);
+        let maxPeak = 0;
+        for (let i = 0; i < totalBars; i++) {
+            const a = Math.floor((i * values.length) / totalBars);
+            const b = Math.max(a + 1, Math.floor(((i + 1) * values.length) / totalBars));
+            let m = 0;
+            for (let j = a; j < b && j < values.length; j++) if (values[j] > m) m = values[j];
+            peaks[i] = m;
+            if (m > maxPeak) maxPeak = m;
+        }
+        if (this._normalize && maxPeak > 0) {
+            for (let i = 0; i < peaks.length; i++) peaks[i] /= maxPeak;
+        }
+        this._peaks = peaks;
     }
 
     /**
