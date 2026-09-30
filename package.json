@@ -1,6 +1,6 @@
 {
     "name": "sonicwave",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "description": "Canvas audio waveform visualizer, interactive equalizer bars and frequency spectrum display. WaveSurfer.js alternative. Zero dependencies.",
     "main": "src/sonicwave.js",
     "module": "src/sonicwave.js",
@@ -12,7 +12,8 @@
     ],
     "scripts": {
         "build": "esbuild src/sonicwave.js --bundle --minify --format=esm --outfile=dist/sonicwave.min.js",
-        "dev": "esbuild src/sonicwave.js --bundle --format=esm --outfile=dist/sonicwave.js --watch"
+        "dev": "esbuild src/sonicwave.js --bundle --format=esm --outfile=dist/sonicwave.js --watch",
+        "test": "node --test \"test/*.test.js\""
     },
     "keywords": [
         "audio waveform visualizer",

@@ -2,7 +2,7 @@
  * SpectrumDisplay — Real-time frequency spectrum visualization.
  * Canvas-based audio spectrum analyzer with multiple display modes.
  */
-import { createHiDPICanvas, fitCanvasToContainer, roundedRect } from './utils/canvas-helpers.js';
+import { createHiDPICanvas, fitCanvasToContainer, roundedRect, binRanges } from './utils/canvas-helpers.js';
 
 export class SpectrumDisplay {
     /**
@@ -16,6 +16,7 @@ export class SpectrumDisplay {
      * @param {number} [config.barGap=1] - Gap between bars
      * @param {number} [config.smoothing=0.7] - Visual smoothing factor (0-1)
      * @param {boolean} [config.responsive=true] - Auto-resize
+     * @param {string} [config.scale='log'] - 'log' (bars per octave, as heard) | 'linear' (bars per bin)
      */
     constructor(config = {}) {
         this._container = typeof config.container === 'string'
@@ -31,6 +32,7 @@ export class SpectrumDisplay {
         this._barWidth = config.barWidth ?? 3;
         this._barGap = config.barGap ?? 1;
         this._smoothing = config.smoothing ?? 0.7;
+        this._scale = config.scale || 'log';
 
         const rect = this._container.getBoundingClientRect();
         const { canvas, ctx } = createHiDPICanvas(this._container, rect.width, rect.height || 120);
@@ -53,6 +55,7 @@ export class SpectrumDisplay {
                 if (dim) {
                     this._width = dim.width;
                     this._height = dim.height;
+                    this._draw();
                 }
             });
             this._resizeObserver.observe(this._container);
@@ -98,21 +101,26 @@ export class SpectrumDisplay {
         return this._colorHigh;
     }
 
-    _drawBars() {
-        const ctx = this._ctx;
+    /** Bar values (0–1): average of the bins of each bar, per the frequency scale. */
+    _barValues() {
         const data = this._smoothedData;
         const step = this._barWidth + this._barGap;
         const numBars = Math.min(data.length, Math.floor(this._width / step));
-        const binsPerBar = Math.floor(data.length / numBars);
+        return binRanges(data.length, numBars, this._scale).map(([a, b]) => {
+            let sum = 0;
+            for (let j = a; j < b; j++) sum += data[j];
+            return sum / (b - a);
+        });
+    }
+
+    _drawBars() {
+        const ctx = this._ctx;
+        const step = this._barWidth + this._barGap;
+        const bars = this._barValues();
+        const numBars = bars.length;
 
         for (let i = 0; i < numBars; i++) {
-            // Average bins for this bar
-            let sum = 0;
-            const start = i * binsPerBar;
-            for (let j = 0; j < binsPerBar; j++) {
-                sum += data[start + j] || 0;
-            }
-            const avg = sum / binsPerBar;
+            const avg = bars[i];
 
             const barH = Math.max(1, avg * this._height * 0.95);
             const x = i * step;
@@ -126,8 +134,9 @@ export class SpectrumDisplay {
 
     _drawLine() {
         const ctx = this._ctx;
-        const data = this._smoothedData;
-        const sliceWidth = this._width / data.length;
+        const data = this._scale === 'log' ? this._barValues() : this._smoothedData;
+        if (!data.length) return;
+        const sliceWidth = this._width / Math.max(1, data.length - 1);
 
         ctx.beginPath();
         ctx.strokeStyle = this._colorMid;
@@ -146,19 +155,13 @@ export class SpectrumDisplay {
 
     _drawMirror() {
         const ctx = this._ctx;
-        const data = this._smoothedData;
         const step = this._barWidth + this._barGap;
-        const numBars = Math.min(data.length, Math.floor(this._width / step));
-        const binsPerBar = Math.floor(data.length / numBars);
+        const bars = this._barValues();
+        const numBars = bars.length;
         const center = this._height / 2;
 
         for (let i = 0; i < numBars; i++) {
-            let sum = 0;
-            const start = i * binsPerBar;
-            for (let j = 0; j < binsPerBar; j++) {
-                sum += data[start + j] || 0;
-            }
-            const avg = sum / binsPerBar;
+            const avg = bars[i];
 
             const barH = Math.max(1, avg * center * 0.9);
             const x = i * step;

@@ -4,7 +4,7 @@
  * Zero-dependency replacement for WaveSurfer.js with additional
  * equalizer bars and spectrum display visualizations.
  * 
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 import { WaveformRenderer } from './waveform-renderer.js';
@@ -39,7 +39,7 @@ const SonicWave = {
     WaveformRenderer,
     EqualizerBars,
     SpectrumDisplay,
-    version: '1.0.0'
+    version: '1.1.0'
 };
 
 export default SonicWave;

@@ -5,6 +5,9 @@
  */
 import { createHiDPICanvas, fitCanvasToContainer, roundedRect } from './utils/canvas-helpers.js';
 
+// Resolution kept from a decoded file: enough for any width, re-bucketed on resize.
+const RAW_BUCKETS = 4000;
+
 export class WaveformRenderer {
     /**
      * @param {object} config
@@ -45,6 +48,7 @@ export class WaveformRenderer {
 
         // Create canvas
         const rect = this._container.getBoundingClientRect();
+        this._fixedHeight = config.height || 0;
         const h = config.height || rect.height || 48;
         const { canvas, ctx } = createHiDPICanvas(this._container, rect.width, h);
         this._canvas = canvas;
@@ -57,13 +61,12 @@ export class WaveformRenderer {
         // Resize observer
         if (this._responsive && typeof ResizeObserver !== 'undefined') {
             this._resizeObserver = new ResizeObserver(() => {
-                const dim = fitCanvasToContainer(this._canvas);
+                const dim = fitCanvasToContainer(this._canvas, this._fixedHeight);
                 if (dim) {
                     this._width = dim.width;
                     this._height = dim.height;
-                    // peaks given with setPeaks() are re-bucketed for the new
-                    // width (created inside a hidden container, width was 0
-                    // and they collapsed into a single bar)
+                    // peaks are re-bucketed for the new width (created inside
+                    // a hidden container, width was 0 and they collapsed)
                     if (this._rawValues) this._resamplePeaks();
                     this._draw();
                 }
@@ -86,49 +89,40 @@ export class WaveformRenderer {
             arrayBuffer = source;
         }
 
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        // decoding does not need an audio output: an offline context avoids
+        // opening (and holding) a hardware AudioContext
+        const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+        const decoder = Offline ? new Offline(1, 1, 44100) : new (window.AudioContext || window.webkitAudioContext)();
+        const audioBuffer = await decoder.decodeAudioData(arrayBuffer);
+        if (!Offline) await decoder.close();
 
         this._duration = audioBuffer.duration;
-        this._peaks = this._extractPeaks(audioBuffer);
-        this._rawValues = null;   // peaks from audio, not from setPeaks()
+        // keep a high-resolution envelope (max |sample| of every channel) and
+        // bucket it to the bars that fit now — and again on every resize
+        this._rawValues = this._extractPeaks(audioBuffer);
+        this._resamplePeaks();
         this._isReady = true;
-
-        await audioCtx.close();
         this._draw();
     }
 
-    /**
-     * Extract peaks from audio buffer
-     */
+    /** Max absolute sample of all channels in RAW_BUCKETS buckets. */
     _extractPeaks(audioBuffer) {
-        const channelData = audioBuffer.getChannelData(0);
-        const totalBars = Math.floor(this._width / (this._barWidth + this._barGap));
-        const samplesPerBar = Math.floor(channelData.length / totalBars);
-        const peaks = new Float32Array(totalBars);
-
-        let maxPeak = 0;
-
-        for (let i = 0; i < totalBars; i++) {
-            let max = 0;
-            const start = i * samplesPerBar;
-            const end = Math.min(start + samplesPerBar, channelData.length);
-
-            for (let j = start; j < end; j++) {
-                const abs = Math.abs(channelData[j]);
-                if (abs > max) max = abs;
-            }
-            peaks[i] = max;
-            if (max > maxPeak) maxPeak = max;
-        }
-
-        // Normalize
-        if (this._normalize && maxPeak > 0) {
-            for (let i = 0; i < peaks.length; i++) {
-                peaks[i] /= maxPeak;
+        const len = audioBuffer.length;
+        const buckets = Math.max(1, Math.min(RAW_BUCKETS, len));
+        const peaks = new Float32Array(buckets);
+        for (let c = 0; c < audioBuffer.numberOfChannels; c++) {
+            const data = audioBuffer.getChannelData(c);
+            for (let i = 0; i < buckets; i++) {
+                const start = Math.floor((i * len) / buckets);
+                const end = Math.floor(((i + 1) * len) / buckets);
+                let max = peaks[i];
+                for (let j = start; j < end; j++) {
+                    const a = data[j] < 0 ? -data[j] : data[j];
+                    if (a > max) max = a;
+                }
+                peaks[i] = max;
             }
         }
-
         return peaks;
     }
 
@@ -234,7 +228,8 @@ export class WaveformRenderer {
         this._canvas.style.cursor = 'pointer';
         this._canvas.addEventListener('click', (e) => {
             const rect = this._canvas.getBoundingClientRect();
-            const progress = (e.clientX - rect.left) / rect.width;
+            if (!rect.width) return;
+            const progress = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
             this.setProgress(progress);
             if (onSeek) onSeek(progress);
         });

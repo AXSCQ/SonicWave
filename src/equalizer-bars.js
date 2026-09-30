@@ -8,7 +8,7 @@
  * - GPU-optimized with scaleY transforms
  * - Audio-reactive mode (integrates with SonicMotion data)
  */
-import { createHiDPICanvas } from './utils/canvas-helpers.js';
+import { binRanges } from './utils/canvas-helpers.js';
 
 export class EqualizerBars {
     /**
@@ -24,6 +24,7 @@ export class EqualizerBars {
      * @param {boolean} [config.mouseReactive=true] - React to mouse position
      * @param {boolean} [config.autoShow=false] - Auto-show/hide based on mouse position
      * @param {string} [config.position='bottom'] - 'bottom' | 'top'
+     * @param {string} [config.scale='log'] - frequency scale of setAudioData(): 'log' | 'linear'
      */
     constructor(config = {}) {
         this._container = typeof config.container === 'string'
@@ -42,6 +43,7 @@ export class EqualizerBars {
         this._mouseReactive = config.mouseReactive ?? true;
         this._autoShow = config.autoShow ?? false;
         this._position = config.position || 'bottom';
+        this._scale = config.scale || 'log';
 
         this._bars = [];
         this._mousePosition = { x: 0, y: 0 };
@@ -95,6 +97,7 @@ export class EqualizerBars {
         }
 
         this._container.appendChild(barsWrapper);
+        this._wrapper = barsWrapper;
 
         if (!this._isVisible) {
             this._container.style.opacity = '0';
@@ -104,13 +107,14 @@ export class EqualizerBars {
         // Mouse events
         if (this._mouseReactive) {
             let lastMoveTime = 0;
-            document.addEventListener('mousemove', (e) => {
+            this._onMouseMove = (e) => {
                 const now = Date.now();
                 if (now - lastMoveTime >= 16) {
                     lastMoveTime = now;
                     this._handleMouseMove(e);
                 }
-            });
+            };
+            document.addEventListener('mousemove', this._onMouseMove);
         }
 
         // Start animation
@@ -182,18 +186,15 @@ export class EqualizerBars {
         this._audioData = frequencyData;
         this._isActive = true;
 
-        // Map frequency bins to bars
-        const binsPerBar = Math.floor(frequencyData.length / this._barCount);
-
-        for (let i = 0; i < this._barCount; i++) {
+        // Map frequency bins to bars (log: one bar per slice of octaves).
+        // Uint8 data is 0–255, Float32 data is expected as 0–1.
+        const scale = frequencyData instanceof Uint8Array ? 255 : 1;
+        binRanges(frequencyData.length, this._barCount, this._scale).forEach(([a, b], i) => {
             let sum = 0;
-            const start = i * binsPerBar;
-            for (let j = 0; j < binsPerBar && (start + j) < frequencyData.length; j++) {
-                sum += frequencyData[start + j];
-            }
-            const avg = sum / binsPerBar / 255;
+            for (let j = a; j < b; j++) sum += frequencyData[j];
+            const avg = sum / (b - a) / scale;
             this._bars[i].targetHeight = Math.max(5, avg * this._maxHeight);
-        }
+        });
     }
 
     _animate() {
@@ -244,6 +245,10 @@ export class EqualizerBars {
     destroy() {
         if (this._rafId) cancelAnimationFrame(this._rafId);
         if (this._hideTimeout) clearTimeout(this._hideTimeout);
-        this._container.innerHTML = '';
+        // the document listener outlived the instance, and innerHTML = ''
+        // erased whatever else the container had
+        if (this._onMouseMove) document.removeEventListener('mousemove', this._onMouseMove);
+        this._wrapper?.remove();
+        this._wrapper = null;
     }
 }

@@ -177,3 +177,10 @@ waveform.destroy()
 ## 📄 License
 
 MIT © 2025 axscq
+
+## Cambios v1.1.0
+
+- **Forma de onda**: `load()` guarda una envolvente de alta resolución y la reparte de nuevo al cambiar de tamaño; creada en un contenedor oculto (ancho 0) ya no se rompe. Decodifica con `OfflineAudioContext` (no abre una salida de audio). `height` fijo se respeta al redimensionar. `enableSeek` entrega siempre un avance entre 0 y 1.
+- **Espectro y ecualizador**: escala de frecuencias logarítmica por defecto (`scale: 'log'`), como la oye el oído; antes dos tercios de las barras mostraban agudos. `scale: 'linear'` mantiene el reparto anterior. Ya no se divide por cero con menos bins que barras.
+- **`EqualizerBars.destroy()`** quita su listener de `mousemove` y solo borra sus barras (antes vaciaba todo el contenedor).
+- Pruebas: `npm test` (node:test).
